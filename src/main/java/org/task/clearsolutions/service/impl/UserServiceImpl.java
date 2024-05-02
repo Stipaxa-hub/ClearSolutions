@@ -3,15 +3,20 @@ package org.task.clearsolutions.service.impl;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import jakarta.validation.constraints.Past;
+import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.ReflectionUtils;
 import org.task.clearsolutions.dto.UserRequestDto;
 import org.task.clearsolutions.dto.UserResponseDto;
 import org.task.clearsolutions.entity.User;
@@ -61,6 +66,22 @@ public class UserServiceImpl implements UserService {
                 })
                 .map(userMapper::toDto)
                 .orElseThrow(() -> new EntityNotFoundException(String.format(MESSAGE_FOR_ENTITY_NOT_FOUND_EXCEPTION, id)));
+    }
+
+    public UserResponseDto updatePartially(Long id, Map<String, Object> fields) {
+        Optional<User> existingUser = userRepository.findById(id);
+
+        if (existingUser.isPresent()) {
+            fields.forEach((key, value) -> {
+                Field field = ReflectionUtils.findField(User.class, key);
+                Objects.requireNonNull(field).setAccessible(true);
+                ReflectionUtils.setField(field, existingUser.get(), value);
+                }
+            );
+            User updatedUser = userRepository.save(existingUser.get());
+            return userMapper.toDto(updatedUser);
+        }
+        throw new EntityNotFoundException(String.format(MESSAGE_FOR_ENTITY_NOT_FOUND_EXCEPTION, id));
     }
 
     @Override
