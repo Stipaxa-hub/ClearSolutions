@@ -3,24 +3,20 @@ package org.task.clearsolutions.service.impl;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import jakarta.validation.constraints.Past;
-import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.util.ReflectionUtils;
 import org.task.clearsolutions.dto.UserRequestDto;
 import org.task.clearsolutions.dto.UserResponseDto;
 import org.task.clearsolutions.entity.User;
 import org.task.clearsolutions.exception.RegistrationException;
+import org.task.clearsolutions.exception.UpdateException;
 import org.task.clearsolutions.mapper.UserMapper;
 import org.task.clearsolutions.repository.UserRepository;
 import org.task.clearsolutions.service.UserService;
@@ -29,6 +25,9 @@ import org.task.clearsolutions.service.UserService;
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
     private static final String MESSAGE_FOR_ENTITY_NOT_FOUND_EXCEPTION = "User with id: %d not found";
+    private static final String MESSAGE_FOR_REGISTRATION_EXCEPTION_PHONE_EMAIL = "Can't register user. User with same email or phone number was registered";
+    private static final String MESSAGE_FOR_REGISTRATION_EXCEPTION_YOUNGER_THAN_ALLOWED = "Can't register user. User must be older than %d";
+    private static final String MESSAGE_FOR_UPDATE_EXCEPTION_YOUNGER_THAN_ALLOWED = "Can't update user. User must be older than %d";
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
@@ -39,7 +38,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserResponseDto register(UserRequestDto userRequestDto) {
         if (userRepository.findByEmail(userRequestDto.email()).isPresent() || userRepository.findByPhoneNumber(userRequestDto.phoneNumber()).isPresent()) {
-            throw new RegistrationException("Can't register user. User with same email or phone number was registered");
+            throw new RegistrationException(MESSAGE_FOR_REGISTRATION_EXCEPTION_PHONE_EMAIL);
         }
 
         if (calculateAge(userRequestDto.birthDate()) > MIN_AGE_ALLOWED_TO_REGISTER) {
@@ -47,41 +46,33 @@ public class UserServiceImpl implements UserService {
             User savedUser = userRepository.save(user);
             return userMapper.toDto(savedUser);
         } else {
-            throw new RegistrationException("Can't register user. User must be older than 18");
+            throw new RegistrationException(String.format(MESSAGE_FOR_REGISTRATION_EXCEPTION_YOUNGER_THAN_ALLOWED, MIN_AGE_ALLOWED_TO_REGISTER));
         }
     }
 
     @Transactional
     @Override
     public UserResponseDto updateAllFields(Long id, UserRequestDto userRequestDto) {
-        return userRepository.findById(id)
-                .map(existingUser -> {
-                    existingUser.setEmail(userRequestDto.email());
-                    existingUser.setFirstName(userRequestDto.firstName());
-                    existingUser.setLastName(userRequestDto.lastName());
-                    existingUser.setBirthDate(userRequestDto.birthDate());
-                    existingUser.setAddress(userRequestDto.address());
-                    existingUser.setPhoneNumber(userRequestDto.phoneNumber());
-                    return userRepository.save(existingUser);
-                })
-                .map(userMapper::toDto)
+       userRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException(String.format(MESSAGE_FOR_ENTITY_NOT_FOUND_EXCEPTION, id)));
+        if (calculateAge(userRequestDto.birthDate()) > MIN_AGE_ALLOWED_TO_REGISTER) {
+            User user = userMapper.toEntity(userRequestDto);
+            user.setId(id);
+            User updatedUser = userRepository.save(user);
+            return userMapper.toDto(updatedUser);
+        } else {
+            throw new UpdateException(String.format(MESSAGE_FOR_UPDATE_EXCEPTION_YOUNGER_THAN_ALLOWED, MIN_AGE_ALLOWED_TO_REGISTER));
+        }
     }
 
-    public UserResponseDto updatePartially(Long id, Map<String, Object> fields) {
-        Optional<User> existingUser = userRepository.findById(id);
-
-        if (existingUser.isPresent()) {
-            fields.forEach((key, value) -> {
-                Field field = ReflectionUtils.findField(User.class, key);
-                Objects.requireNonNull(field).setAccessible(true);
-                ReflectionUtils.setField(field, existingUser.get(), value);
-                }
-            );
-            User updatedUser = userRepository.save(existingUser.get());
-            return userMapper.toDto(updatedUser);
-        }
-        throw new EntityNotFoundException(String.format(MESSAGE_FOR_ENTITY_NOT_FOUND_EXCEPTION, id));
+    public UserResponseDto updatePartially(Long id, UserRequestDto userRequestDto) {
+        User userToUpdate = userRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        String.format(MESSAGE_FOR_ENTITY_NOT_FOUND_EXCEPTION, id)
+                ));
+        updateFieldsForPatch(userMapper.toEntity(userRequestDto), userToUpdate);
+        User updatedUser = userRepository.save(userToUpdate);
+        return userMapper.toDto(updatedUser);
     }
 
     @Override
@@ -108,5 +99,29 @@ public class UserServiceImpl implements UserService {
     private Integer calculateAge(LocalDate birthDate) {
         Period period = Period.between(birthDate, LocalDate.now());
         return period.getYears();
+    }
+
+    private void updateFieldsForPatch(User source, User target) {
+        String updatedEmail = source.getEmail();
+        if (isNotEmpty(updatedEmail)) target.setEmail(updatedEmail);
+
+        String updatedFirstName = source.getFirstName();
+        if (isNotEmpty(updatedFirstName)) target.setFirstName(updatedFirstName);
+
+        String updatedLastName = source.getLastName();
+        if (isNotEmpty(updatedLastName)) target.setLastName(updatedLastName);
+
+        LocalDate updatedBirthDate = source.getBirthDate();
+        if (isNotEmpty(updatedBirthDate)) target.setBirthDate(updatedBirthDate);
+
+        String updatedAddress = source.getAddress();
+        if (isNotEmpty(updatedAddress)) target.setAddress(updatedAddress);
+
+        String updatedPhoneNumber = source.getPhoneNumber();
+        if (isNotEmpty(updatedPhoneNumber)) target.setPhoneNumber(updatedPhoneNumber);
+    }
+
+    private <T> boolean isNotEmpty(T field) {
+        return field != null && !field.equals("");
     }
 }

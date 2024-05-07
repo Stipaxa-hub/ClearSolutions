@@ -3,7 +3,6 @@ package org.task.clearsolutions.controller;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Past;
 import java.time.LocalDate;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -40,8 +39,8 @@ public class UserController {
     }
 
     @PatchMapping("/{id}")
-    public UserResponseDto updatePartially(@PathVariable Long id, @RequestBody Map<String, Object> fields) {
-        return userService.updatePartially(id, fields);
+    public UserResponseDto updatePartially(@PathVariable Long id, @RequestBody UserRequestDto userRequestDto) {
+        return userService.updatePartially(id, userRequestDto);
     }
 
     @DeleteMapping("/{id}")

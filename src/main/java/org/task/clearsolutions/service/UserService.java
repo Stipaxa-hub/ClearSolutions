@@ -2,7 +2,6 @@ package org.task.clearsolutions.service;
 
 import jakarta.validation.constraints.Past;
 import java.time.LocalDate;
-import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -29,10 +28,10 @@ public interface UserService {
     /***
      * Update one or some user`s field
      * @param id The id of the user to be updated
-     * @param fields The fields of the user to be updated
+     * @param userRequestDto The fields of the user to be updated
      * @return The updated UserResponseDto object.
      */
-    public UserResponseDto updatePartially(Long id, Map<String, Object> fields);
+    UserResponseDto updatePartially(Long id, UserRequestDto userRequestDto);
 
     /***
      * Deletes a user by its id
